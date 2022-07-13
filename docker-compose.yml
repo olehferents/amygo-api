@@ -1,0 +1,90 @@
+version: '3'
+
+services:
+  db:
+    image: postgres:13
+    env_file:
+      - dbconfig.env
+    volumes:
+      - database-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - database_network
+  
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    volumes:
+      - .:/api
+      - /api/node_modules
+    ports:
+      - "8083:8083"
+    depends_on:
+      - db
+    tty: true
+    networks:
+      - cache_network
+      - database_network
+      - nginx_network
+
+  redis-brocker:
+    image: redis
+    command: ["redis-server", "--bind", "0.0.0.0", "--port", "6380"]
+    ports:
+      - "6380:6380"
+    expose:
+      - "6380"
+    depends_on:
+      - app
+    networks:
+      - cache_network
+
+  microservice:
+    build:
+      context: .
+      dockerfile: Dockerfile.brocker
+    volumes: 
+      - .:/microservice
+      - /microservice/node_modules
+    networks:
+      - cache_network
+
+  nginx:
+    image: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    links:
+      - cinet-pay
+    volumes:
+      - .:/api
+      - ./secret:/keys
+      - ./nginx/local.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+    networks:
+      - nginx_network
+
+  cinet-pay:
+    build:
+      context: .
+      dockerfile: Dockerfile.payment
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./payment_app:/application/public
+    networks:
+      - nginx_network
+
+networks:
+  database_network:
+    driver: bridge
+  cache_network:
+    driver: bridge
+  nginx_network:
+    driver: bridge
+
+volumes:
+  database-data:
